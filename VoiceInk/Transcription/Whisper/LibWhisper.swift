@@ -79,7 +79,7 @@ actor WhisperContext {
             vadParams.threshold = 0.50
             vadParams.min_speech_duration_ms = 250
             vadParams.min_silence_duration_ms = 100
-            vadParams.max_speech_duration_s = Float.greatestFiniteMagnitude
+            vadParams.max_speech_duration_s = 25.0 // Cap continuous speech at ~25s so VAD splits it at silence, keeping every chunk inside whisper's 30s window. Without this (was .greatestFiniteMagnitude) a long uninterrupted dictation is fed as one >30s stream, and whisper's cross-window seek can loop on the last phrase and drop the rest of the audio.
             vadParams.speech_pad_ms = 30
             vadParams.samples_overlap = 0.1
             params.vad_params = vadParams
