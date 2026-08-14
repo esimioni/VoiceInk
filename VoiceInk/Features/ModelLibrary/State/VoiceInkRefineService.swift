@@ -27,9 +27,68 @@ final class VoiceInkRefineService: ObservableObject {
 
     static let providerName = "VoiceInk Refine"
     static let modelName = "VoiceInk Refine V1"
-    static let systemPrompt = """
+    static let baseSystemPrompt = """
         Transform raw ASR input into polished text. Preserve the original meaning and tone. Handle punctuation, capitalization, and spoken formatting cues properly. Remove fillers, repetitions, false starts, and discarded self-corrections. Output only the final text.
         """
+
+    // LOCAL PATCH — name the dictation language in the system prompt.
+    //
+    // Refine V1 is an English-only fine-tune (its model card says `language: en`) and
+    // silently TRANSLATES non-English dictation into English instead of cleaning it up.
+    // Measured on 2026-08-14 over 300 real pt-BR transcripts from the local
+    // ZTRANSCRIPTION store: 11/300 (3.7%) translated with the upstream prompt, at both
+    // temperature 0.3 and 0. Naming the language brings it to 0/300 (and 0/600 at
+    // temperature 0.3) while keeping the same amount of cleanup, so the sampling
+    // temperature is deliberately left untouched.
+    static var systemPrompt: String {
+        guard let language = activeLanguageName else {
+            return "The input and the output are in the same language. Never translate. "
+                + baseSystemPrompt
+        }
+        return "The input and the output are both in \(language). Never translate. "
+            + baseSystemPrompt.replacingOccurrences(
+                of: "Output only the final text.",
+                with: "Output only the final text, in \(language)."
+            )
+    }
+
+    /// English display name of the language the active mode dictates in; nil for "auto"
+    /// (no language pinned — the prompt then falls back to "the same language as the input").
+    private static var activeLanguageName: String? {
+        let code =
+            activeModeLanguageCode ?? UserDefaults.standard.string(forKey: "SelectedLanguage")
+        guard let code, code != "auto" else { return nil }
+        return LanguageDictionary.all[code] ?? LanguageDictionary.all[String(code.prefix(2))]
+    }
+
+    /// Minimal view of a stored mode, so the language can be read off UserDefaults from any
+    /// thread — ModeManager is main-actor bound and enhancement runs on a background task.
+    private struct StoredModeLanguage: Decodable {
+        let id: UUID
+        let isDefault: Bool?
+        let isEnabled: Bool?
+        let selectedLanguage: String?
+    }
+
+    /// Mirrors ModeManager.currentEffectiveConfiguration: active mode, then the default one,
+    /// then the first enabled one.
+    private static var activeModeLanguageCode: String? {
+        let defaults = UserDefaults.standard
+        guard let data = defaults.data(forKey: "modeConfigurationsV2"),
+            let modes = try? JSONDecoder().decode([StoredModeLanguage].self, from: data)
+        else {
+            return nil
+        }
+
+        let activeID = defaults.string(forKey: "activeConfigurationId")
+            .flatMap(UUID.init(uuidString:))
+        let mode =
+            modes.first { $0.id == activeID && $0.isEnabled != false }
+            ?? modes.first { $0.isDefault == true }
+            ?? modes.first { $0.isEnabled != false }
+        return mode?.selectedLanguage
+    }
+
     static let repositoryID = "beingpax/VoiceInk-Refine-V1"
     static let pinnedRevision = "ad665418d3850e379e29236e66be3ddc0ac0bf04"
     static let minimumMemoryBytes: UInt64 = 16 * 1_024 * 1_024 * 1_024
