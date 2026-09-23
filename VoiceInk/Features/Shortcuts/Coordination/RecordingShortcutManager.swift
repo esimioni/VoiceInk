@@ -37,6 +37,7 @@ class RecordingShortcutManager: ObservableObject {
     private var recorderPanelShortcutManager: RecorderPanelShortcutManager
     private let modeShortcutManager: ModeShortcutManager
     private let shortcutMonitor = ShortcutMonitor()
+    private let legacyMiddleClickMonitor = LegacyMiddleClickMonitor()  // local patch
     private var shortcutChangeObserver: NSObjectProtocol?
     private let shortcutModeHandler: RecordingShortcutModeHandler
     private let primaryRecordingShortcutModeSource: RecordingShortcutModeSource
@@ -145,6 +146,10 @@ class RecordingShortcutManager: ObservableObject {
         removeAllMonitoring()
 
         refreshShortcutMonitor()
+        legacyMiddleClickMonitor.start { [weak self] in  // local patch
+            guard let self, Self.canHandleShortcutAction(for: self.engine.recordingState) else { return }
+            await self.recorderUIManager.toggleRecorderPanel()
+        }
     }
 
     private func refreshShortcutMonitor() {
@@ -252,6 +257,7 @@ class RecordingShortcutManager: ObservableObject {
 
     private func removeAllMonitoring() {
         shortcutMonitor.stop()
+        legacyMiddleClickMonitor.stop()  // local patch
 
         shortcutModeHandler.reset()
     }
