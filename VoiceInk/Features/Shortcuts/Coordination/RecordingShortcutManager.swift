@@ -44,6 +44,7 @@ class RecordingShortcutManager: ObservableObject {
     private var recorderPanelShortcutManager: RecorderPanelShortcutManager
     private let modeShortcutManager: ModeShortcutManager
     private let shortcutMonitor = ShortcutMonitor(owner: "recording")
+    private let legacyMiddleClickMonitor = LegacyMiddleClickMonitor()  // local patch
     private var lifecycleObservers: [NSObjectProtocol] = []
     private var shortcutChangeObserver: NSObjectProtocol?
     private let shortcutModeHandler: RecordingShortcutModeHandler
@@ -172,6 +173,11 @@ class RecordingShortcutManager: ObservableObject {
 
     private func refreshShortcutMonitoring(reason: String) {
         refreshShortcutMonitor(reason: reason)
+        // local patch: start() stops any previous monitors first, so a refresh never stacks them.
+        legacyMiddleClickMonitor.start { [weak self] in
+            guard let self, Self.canHandleShortcutAction(for: self.engine.recordingState) else { return }
+            await self.recorderUIManager.toggleRecorderPanel()
+        }
     }
 
     private func refreshShortcutMonitor(reason: String) {
@@ -284,6 +290,7 @@ class RecordingShortcutManager: ObservableObject {
 
     private func removeAllMonitoring(reason: String) {
         shortcutMonitor.stop(reason: reason)
+        legacyMiddleClickMonitor.stop()  // local patch
     }
 
     var isShortcutConfigured: Bool {
